@@ -1,0 +1,22 @@
+[package]
+name = "connpool"
+version = "0.1.0"
+edition = "2021"
+authors = ["Dorian Niemiec <dorian@ferron.sh>"]
+description = "A concurrent, generic connection pool for Rust"
+license = "MIT"
+readme = "README.md"
+keywords = ["connection", "pool", "concurrent", "generic", "async"]
+categories = ["asynchronous", "network-programming"]
+documentation = "https://docs.rs/connpool"
+repository = "https://github.com/ferronweb/connpool"
+
+[dependencies]
+ahash = "0.8.12"
+quick_cache = "0.6.18"
+slab = "0.4.11"
+tokio = { version = "1.48.0", default-features = false, features = ["sync"] }
+
+[dev-dependencies]
+tokio = { version = "1.48.0", default-features = false, features = ["macros", "rt", "rt-multi-thread"] }
+shiba = "0.1.1"
