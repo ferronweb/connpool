@@ -109,7 +109,9 @@ where
     let local_guard = if let Some(index) = local_limit_index {
       let local_limits = self.local_limits.read().expect("local limits lock poisoned");
       if let Some(semaphore) = local_limits.get(index) {
-        Some(semaphore.clone().try_acquire_owned().ok()?)
+        let semaphore = semaphore.clone();
+        drop(local_limits);
+        Some(semaphore.try_acquire_owned().ok()?)
       } else {
         None
       }
@@ -135,11 +137,14 @@ where
 
   /// Pulls an item from the pool (with local limit applied).
   /// This method waits, when either the global limit or a local limit is reached.
+  #[allow(clippy::await_holding_lock)]
   pub async fn pull_with_wait_local_limit(&self, key: K, local_limit_index: Option<usize>) -> Item<'_, K, I> {
     let local_guard = if let Some(index) = local_limit_index {
       let local_limits = self.local_limits.read().expect("local limits lock poisoned");
       if let Some(semaphore) = local_limits.get(index) {
-        Some(semaphore.clone().acquire_owned().await.expect("semaphore closed"))
+        let semaphore = semaphore.clone();
+        drop(local_limits); // Ensure dropping the lock before awaiting
+        Some(semaphore.acquire_owned().await.expect("semaphore closed"))
       } else {
         None
       }
@@ -175,7 +180,9 @@ where
     let local_guard = if let Some(index) = local_limit_index {
       let local_limits = self.local_limits.read().expect("local limits lock poisoned");
       if let Some(semaphore) = local_limits.get(index) {
-        Some(semaphore.clone().try_acquire_owned().ok()?)
+        let semaphore = semaphore.clone();
+        drop(local_limits);
+        Some(semaphore.try_acquire_owned().ok()?)
       } else {
         None
       }
