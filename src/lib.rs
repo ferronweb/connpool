@@ -109,11 +109,6 @@ where
   /// Attempts to pull an item from the pool (with local limit applied).
   /// This method waits, when the global limit is reached, and returns `None`, when a local limit is reached.
   pub async fn pull_with_local_limit(&self, key: K, local_limit_index: Option<usize>) -> Option<Item<'_, K, I>> {
-    let guard = if let Some(semaphore) = &self.semaphore {
-      Some(semaphore.acquire().await.expect("semaphore closed"))
-    } else {
-      None
-    };
     let local_guard = if let Some(index) = local_limit_index {
       let local_limits = self.local_limits.read().expect("local limits lock poisoned");
       if let Some(semaphore) = local_limits.get(index) {
@@ -121,6 +116,11 @@ where
       } else {
         None
       }
+    } else {
+      None
+    };
+    let guard = if let Some(semaphore) = &self.semaphore {
+      Some(semaphore.acquire().await.expect("semaphore closed"))
     } else {
       None
     };
