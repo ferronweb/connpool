@@ -1,5 +1,9 @@
 # Changelog
 
+## `connpool` UNRELEASED
+
+- The item guard is now an owned value, not borrowed.
+
 ## `connpool` 0.1.1 - December 29, 2025
 
 - Added support for pulling items from the pool with waiting for the local limit.

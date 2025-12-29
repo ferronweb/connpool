@@ -53,7 +53,7 @@ use std::hash::Hash;
 use std::sync::{Arc, RwLock};
 
 use slab::Slab;
-use tokio::sync::{OwnedSemaphorePermit, Semaphore, SemaphorePermit};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 use self::concurrent_limited_multimap::ConcurrentLimitedMultimap;
 
@@ -61,7 +61,7 @@ use self::concurrent_limited_multimap::ConcurrentLimitedMultimap;
 pub struct Pool<K, I> {
   inner: Arc<ConcurrentLimitedMultimap<K, I, ahash::RandomState>>,
   local_limits: RwLock<Slab<Arc<Semaphore>>>,
-  semaphore: Option<Semaphore>,
+  semaphore: Option<Arc<Semaphore>>,
 }
 
 impl<K, I> Pool<K, I>
@@ -75,7 +75,7 @@ where
         capacity,
         ahash::RandomState::new(),
       )),
-      semaphore: Some(Semaphore::new(capacity)),
+      semaphore: Some(Arc::new(Semaphore::new(capacity))),
       local_limits: RwLock::new(Slab::new()),
     }
   }
@@ -99,13 +99,13 @@ where
 
   /// Pulls an item from the pool.
   /// This method waits, when the global limit is reached.
-  pub async fn pull(&self, key: K) -> Item<'_, K, I> {
+  pub async fn pull(&self, key: K) -> Item<K, I> {
     self.pull_with_wait_local_limit(key, None).await
   }
 
   /// Attempts to pull an item from the pool (with local limit applied).
   /// This method waits, when the global limit is reached, and returns `None`, when a local limit is reached.
-  pub async fn pull_with_local_limit(&self, key: K, local_limit_index: Option<usize>) -> Option<Item<'_, K, I>> {
+  pub async fn pull_with_local_limit(&self, key: K, local_limit_index: Option<usize>) -> Option<Item<K, I>> {
     let local_guard = if let Some(index) = local_limit_index {
       let local_limits = self.local_limits.read().expect("local limits lock poisoned");
       if let Some(semaphore) = local_limits.get(index) {
@@ -119,7 +119,7 @@ where
       None
     };
     let guard = if let Some(semaphore) = &self.semaphore {
-      Some(semaphore.acquire().await.expect("semaphore closed"))
+      Some(semaphore.clone().acquire_owned().await.expect("semaphore closed"))
     } else {
       None
     };
@@ -138,7 +138,7 @@ where
   /// Pulls an item from the pool (with local limit applied).
   /// This method waits, when either the global limit or a local limit is reached.
   #[allow(clippy::await_holding_lock)]
-  pub async fn pull_with_wait_local_limit(&self, key: K, local_limit_index: Option<usize>) -> Item<'_, K, I> {
+  pub async fn pull_with_wait_local_limit(&self, key: K, local_limit_index: Option<usize>) -> Item<K, I> {
     let local_guard = if let Some(index) = local_limit_index {
       let local_limits = self.local_limits.read().expect("local limits lock poisoned");
       if let Some(semaphore) = local_limits.get(index) {
@@ -152,7 +152,7 @@ where
       None
     };
     let guard = if let Some(semaphore) = &self.semaphore {
-      Some(semaphore.acquire().await.expect("semaphore closed"))
+      Some(semaphore.clone().acquire_owned().await.expect("semaphore closed"))
     } else {
       None
     };
@@ -170,13 +170,13 @@ where
 
   /// Attempts to pull an item from the pool.
   /// This method returns `None`, when the global limit is reached.
-  pub fn try_pull(&self, key: K) -> Option<Item<'_, K, I>> {
+  pub fn try_pull(&self, key: K) -> Option<Item<K, I>> {
     self.try_pull_with_local_limit(key, None)
   }
 
   /// Attempts to pull an item from the pool (with local limit applied).
   /// This method returns `None`, when either the global limit or a local limit is reached.
-  pub fn try_pull_with_local_limit(&self, key: K, local_limit_index: Option<usize>) -> Option<Item<'_, K, I>> {
+  pub fn try_pull_with_local_limit(&self, key: K, local_limit_index: Option<usize>) -> Option<Item<K, I>> {
     let local_guard = if let Some(index) = local_limit_index {
       let local_limits = self.local_limits.read().expect("local limits lock poisoned");
       if let Some(semaphore) = local_limits.get(index) {
@@ -190,7 +190,7 @@ where
       None
     };
     let guard = if let Some(semaphore) = &self.semaphore {
-      Some(semaphore.try_acquire().ok()?)
+      Some(semaphore.clone().try_acquire_owned().ok()?)
     } else {
       None
     };
@@ -208,15 +208,15 @@ where
 }
 
 /// An item in the connection pool.
-pub struct Item<'a, K: Eq + Hash, I> {
+pub struct Item<K: Eq + Hash, I> {
   pool_inner: Arc<ConcurrentLimitedMultimap<K, I, ahash::RandomState>>,
   key: Option<Arc<K>>,
   inner: Option<I>,
-  _guard: Option<SemaphorePermit<'a>>,
+  _guard: Option<OwnedSemaphorePermit>,
   _local_guard: Option<OwnedSemaphorePermit>,
 }
 
-impl<'a, K: Eq + Hash, I> Item<'a, K, I> {
+impl<K: Eq + Hash, I> Item<K, I> {
   /// Takes the inner value from the item. This will also ensure that the item won't be returned.
   pub fn take(mut self) -> Option<I> {
     self.inner.take()
@@ -233,7 +233,7 @@ impl<'a, K: Eq + Hash, I> Item<'a, K, I> {
   }
 }
 
-impl<'a, K: Eq + Hash, I> Drop for Item<'a, K, I> {
+impl<K: Eq + Hash, I> Drop for Item<K, I> {
   fn drop(&mut self) {
     if let Some(inner) = self.inner.take() {
       self.pool_inner.insert(self.key.take().expect("key not set"), inner);
