@@ -100,10 +100,7 @@ where
   /// Pulls an item from the pool.
   /// This method waits, when the global limit is reached.
   pub async fn pull(&self, key: K) -> Item<'_, K, I> {
-    self
-      .pull_with_local_limit(key, None)
-      .await
-      .expect("failed to pull item")
+    self.pull_with_wait_local_limit(key, None).await
   }
 
   /// Attempts to pull an item from the pool (with local limit applied).
@@ -134,6 +131,36 @@ where
       _guard: guard,
       _local_guard: local_guard,
     })
+  }
+
+  /// Pulls an item from the pool (with local limit applied).
+  /// This method waits, when either the global limit or a local limit is reached.
+  pub async fn pull_with_wait_local_limit(&self, key: K, local_limit_index: Option<usize>) -> Item<'_, K, I> {
+    let local_guard = if let Some(index) = local_limit_index {
+      let local_limits = self.local_limits.read().expect("local limits lock poisoned");
+      if let Some(semaphore) = local_limits.get(index) {
+        Some(semaphore.clone().acquire_owned().await.expect("semaphore closed"))
+      } else {
+        None
+      }
+    } else {
+      None
+    };
+    let guard = if let Some(semaphore) = &self.semaphore {
+      Some(semaphore.acquire().await.expect("semaphore closed"))
+    } else {
+      None
+    };
+
+    let key = Arc::new(key);
+    let inner_value = self.inner.remove(key.clone());
+    Item {
+      pool_inner: self.inner.clone(),
+      key: Some(key),
+      inner: inner_value,
+      _guard: guard,
+      _local_guard: local_guard,
+    }
   }
 }
 
