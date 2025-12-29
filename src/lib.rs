@@ -162,6 +162,42 @@ where
       _local_guard: local_guard,
     }
   }
+
+  /// Attempts to pull an item from the pool.
+  /// This method returns `None`, when the global limit is reached.
+  pub fn try_pull(&self, key: K) -> Option<Item<'_, K, I>> {
+    self.try_pull_with_local_limit(key, None)
+  }
+
+  /// Attempts to pull an item from the pool (with local limit applied).
+  /// This method returns `None`, when either the global limit or a local limit is reached.
+  pub fn try_pull_with_local_limit(&self, key: K, local_limit_index: Option<usize>) -> Option<Item<'_, K, I>> {
+    let local_guard = if let Some(index) = local_limit_index {
+      let local_limits = self.local_limits.read().expect("local limits lock poisoned");
+      if let Some(semaphore) = local_limits.get(index) {
+        Some(semaphore.clone().try_acquire_owned().ok()?)
+      } else {
+        None
+      }
+    } else {
+      None
+    };
+    let guard = if let Some(semaphore) = &self.semaphore {
+      Some(semaphore.try_acquire().ok()?)
+    } else {
+      None
+    };
+
+    let key = Arc::new(key);
+    let inner_value = self.inner.remove(key.clone());
+    Some(Item {
+      pool_inner: self.inner.clone(),
+      key: Some(key),
+      inner: inner_value,
+      _guard: guard,
+      _local_guard: local_guard,
+    })
+  }
 }
 
 /// An item in the connection pool.
