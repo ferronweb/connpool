@@ -1,6 +1,6 @@
 # Changelog
 
-## `connpool` UNRELEASED
+## `connpool` 0.2.0 - December 29. 2025
 
 - The item guard is now an owned value, not borrowed.
 
