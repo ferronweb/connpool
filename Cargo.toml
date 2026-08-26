@@ -1,6 +1,6 @@
 [package]
 name = "connpool"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 authors = ["Dorian Niemiec <dorian@ferron.sh>"]
 description = "A concurrent, generic connection pool for Rust"
@@ -13,7 +13,7 @@ repository = "https://github.com/ferronweb/connpool"
 
 [dependencies]
 ahash = "0.8.12"
-quick_cache = "0.6.18"
+quick_cache = "0.7.0"
 slab = "0.4.11"
 tokio = { version = "1.48.0", default-features = false, features = ["sync"] }
 

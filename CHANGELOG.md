@@ -1,5 +1,9 @@
 # Changelog
 
+## `connpool` 0.2.1 - August 26, 2026
+
+- Updated `quick_cache` to 0.7
+
 ## `connpool` 0.2.0 - December 29. 2025
 
 - The item guard is now an owned value, not borrowed.
